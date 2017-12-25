@@ -1,26 +1,25 @@
 import asyncio
 import websockets
 import json
+import argparse
+from rrb3 import RRB3
+
+
+rr = RRB3(1.2*6, 6) # battery voltage, motor voltage
+
+parser = argparse.ArgumentParser(prog='robot-server')
+parser.add_argument('--bind', dest='bind', default='')
+parser.add_argument('--port', dest='port', default='1974')
+args = parser.parse_args()
 
 
 async def robot(websocket, path):
     async for message in websocket:
         command = json.loads(message)
 
-        # forward sets both motors to half speed
-        print("rr.set_motors(0.5, 0, 0.5, 0)")
+        motors = command['data']['motors']
+        rr.set_motors(motors['left_speed'], motors['left_direction'], motors['right_speed'], motors['right_direction'])
 
-        # backward sets both motors to half speed
-        print("rr.set_motors(0.5, 1, 0.5, 1)")
-
-        # left sets left motor in reverse, right motor in forward
-        print("rr.set_motors(0.5, 0, 0.5, 1)")
-
-        # right sets right motor in reverse, left motor in forward
-        print("rr.set_motors(0.5, 1, 0.5, 0)")
-
-        print(message)
-
-asyncio.ensure_future(websockets.serve(robot, port=8765))
+asyncio.ensure_future(websockets.serve(robot, host=args.bind, port=args.port))
 asyncio.get_event_loop().run_forever()
 

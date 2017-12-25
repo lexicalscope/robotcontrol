@@ -3,6 +3,7 @@ import queue
 import json
 import asyncio
 import websockets
+import argparse
 
 
 sync_raw_q = queue.Queue()
@@ -35,8 +36,18 @@ async def key_repeat_filter(from_q, to_q):
             await to_q.put(item)
 
 
-async def direction_forwarder(q ):
-    websocket = await websockets.connect('ws://localhost:8765/')
+def motor_command(left_speed, left_direction, right_speed, right_direction):
+    return {
+        'left_speed': left_speed,
+        'left_direction': left_direction,
+        'right_speed': right_speed,
+        'right_direction': right_direction,
+    }
+
+
+async def direction_forwarder(q, server, port):
+    print(f"ws://{server}:{port}/")
+    websocket = await websockets.connect(f"ws://{server}:{port}/")
 
     right = False
     left = False
@@ -62,21 +73,31 @@ async def direction_forwarder(q ):
         go_forward = forward and not backward
         go_backward = backward and not forward
 
-        turn = ""
-        direction = ""
+        if go_left and go_forward:
+            motors = motor_command(0.4, 1, 0.6, 1)
+        elif go_right and go_forward:
+            motors = motor_command(0.6, 1, 0.4, 1)
+        elif go_left and go_backward:
+            motors = motor_command(0.4, 0, 0.6, 0)
+        elif go_right and go_backward:
+            motors = motor_command(0.6, 0, 0.4, 0)
+        elif go_forward:
+            motors = motor_command(0.5, 1, 0.5, 1)
+        elif go_backward:
+            motors = motor_command(0.5, 0, 0.5, 0)
+        elif go_left:
+            motors = motor_command(0.5, 0, 0.5, 1)
+        elif go_right:
+            motors = motor_command(0.5, 0, 0.5, 1)
+        else:
+            motors = motor_command(0, 1, 0, 1)
 
-        if go_left:
-            turn = "left"
-        if go_right:
-            turn = "right"
-        if go_forward:
-            direction = "forward"
-        if go_backward:
-            direction = "backward"
+        await websocket.send(json.dumps({'data': {'motors': motors}}))
 
-        message = json.dumps({'turn': turn, 'direction': direction})
-        await websocket.send(message)
-
+parser = argparse.ArgumentParser(prog='robot-client')
+parser.add_argument('--server', dest='server', default='127.0.0.1')
+parser.add_argument('--port', dest='port', default='1974')
+args = parser.parse_args()
 
 # Collect events until released, on windows the key listener runs in operating system thread
 with Listener(
@@ -84,5 +105,5 @@ with Listener(
         on_release=on_release) as listener:
     asyncio.ensure_future(consume_keys(sync_raw_q, async_raw_q))
     asyncio.ensure_future(key_repeat_filter(async_raw_q, unique_q))
-    asyncio.ensure_future(direction_forwarder(unique_q))
+    asyncio.get_event_loop().run_until_complete(direction_forwarder(unique_q, args.server, args.port))
 
