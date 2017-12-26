@@ -46,9 +46,24 @@ def motor_command(left_speed, left_direction, right_speed, right_direction):
 
 
 async def direction_forwarder(q, server, port):
-    print(f"ws://{server}:{port}/")
     websocket = await websockets.connect(f"ws://{server}:{port}/")
+    consumer_task = asyncio.ensure_future(robot_recv(websocket))
+    producer_task = asyncio.ensure_future(robot_send(websocket, q))
+    done, pending = await asyncio.wait(
+        [consumer_task, producer_task],
+        return_when=asyncio.FIRST_COMPLETED,
+    )
 
+    for task in pending:
+        task.cancel()
+
+
+async def robot_recv(websocket):
+    async for message in websocket:
+        print(message)
+
+
+async def robot_send(websocket, q):
     right = False
     left = False
     forward = False
@@ -74,21 +89,21 @@ async def direction_forwarder(q, server, port):
         go_backward = backward and not forward
 
         if go_left and go_forward:
-            motors = motor_command(0.4, 1, 0.6, 1)
-        elif go_right and go_forward:
-            motors = motor_command(0.6, 1, 0.4, 1)
-        elif go_left and go_backward:
-            motors = motor_command(0.4, 0, 0.6, 0)
-        elif go_right and go_backward:
             motors = motor_command(0.6, 0, 0.4, 0)
+        elif go_right and go_forward:
+            motors = motor_command(0.4, 0, 0.6, 0)
+        elif go_left and go_backward:
+            motors = motor_command(0.6, 1, 0.4, 1)
+        elif go_right and go_backward:
+            motors = motor_command(0.4, 1, 0.6, 1)
         elif go_forward:
-            motors = motor_command(0.5, 1, 0.5, 1)
-        elif go_backward:
             motors = motor_command(0.5, 0, 0.5, 0)
+        elif go_backward:
+            motors = motor_command(0.5, 1, 0.5, 1)
         elif go_left:
             motors = motor_command(0.5, 0, 0.5, 1)
         elif go_right:
-            motors = motor_command(0.5, 0, 0.5, 1)
+            motors = motor_command(0.5, 1, 0.5, 0)
         else:
             motors = motor_command(0, 1, 0, 1)
 
